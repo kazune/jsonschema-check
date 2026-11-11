@@ -1,13 +1,37 @@
 use std::{env, fs, process};
 use serde_json::Value;
 
+const USAGE: &str = "Usage: jsonschema-check <schema.json> <data.json>";
+
 fn run() -> Result<bool, Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 3 {
-        return Err(
-            "Usage: jsonschema-check <schema.json> <data.json>".into()
-        );
+    if args.len() == 2 {
+        if args[1] == "--help" {
+            println!(
+                "A minimal JSON Schema validation CLI.\n\n\
+                 {USAGE}\n\
+                 Usage: jsonschema-check --help\n\
+                 Usage: jsonschema-check --version\n\n\
+                 Arguments:\n  <schema.json>  Path to the JSON Schema file\n  <data.json>    Path to the JSON data file\n\n\
+                 Options:\n  --help     Print help\n  --version  Print version\n\n\
+                 Exit codes:\n  0  Validation succeeded, or help/version was printed\n  1  Validation failed\n  2  Argument, file reading, JSON parsing, or schema compilation error"
+            );
+            return Ok(true);
+        }
+
+        if args[1] == "--version" {
+            println!("jsonschema-check {}", env!("CARGO_PKG_VERSION"));
+            return Ok(true);
+        }
+    }
+
+    if args.len() != 3
+        || args[1..]
+            .iter()
+            .any(|arg| arg == "--help" || arg == "--version")
+    {
+        return Err(USAGE.into());
     }
 
     // ファイルの読み込みとJSONパース

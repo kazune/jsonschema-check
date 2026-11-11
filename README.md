@@ -17,12 +17,22 @@ The executable is available at `target/release/jsonschema-check`.
 
 ## Usage
 
-Pass exactly two arguments: the schema file path followed by the data file path.
+To validate data, pass exactly two arguments: the schema file path followed by the data file path.
 Both files must contain valid JSON.
 
 ```sh
 jsonschema-check <schema.json> <data.json>
 ```
+
+Use `--help` to display usage information or `--version` to display the program version.
+Each option must be used alone and writes to standard output with exit code `0` without reading any files.
+
+```sh
+jsonschema-check --help
+jsonschema-check --version
+```
+
+Combining either option with other arguments produces the usage message on standard error with exit code `2`.
 
 For example, save the following schema as `schema.json`:
 
@@ -67,7 +77,7 @@ The instance path is a JSON Pointer into the data and is empty for errors at the
 
 | Code | Meaning |
 | --- | --- |
-| `0` | The data satisfies the schema. |
+| `0` | The data satisfies the schema, or help or version information was displayed. |
 | `1` | The data does not satisfy the schema. |
 | `2` | An argument, file reading, JSON parsing, or schema compilation error occurred. |
 
