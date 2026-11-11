@@ -304,6 +304,176 @@ fn jsonl_output_failure_exits_with_two() {
     );
 }
 
+#[cfg(unix)]
+fn closed_output() -> std::process::Stdio {
+    let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
+    drop(reader);
+    std::process::Stdio::from(std::os::fd::OwnedFd::from(writer))
+}
+
+#[cfg(unix)]
+#[test]
+fn help_and_version_output_failures_exit_with_two() {
+    for option in ["--help", "--version"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+            .arg(option)
+            .stdout(closed_output())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.starts_with("Error: "));
+        assert!(!stderr.contains("panicked"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn text_output_failure_exits_with_two() {
+    let fixture = jsonl_fixture(
+        "text-output",
+        &serde_json::json!(false),
+        &serde_json::json!({}),
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+        .arg(fixture.0.join("schema.json"))
+        .arg(fixture.0.join("data.json"))
+        .stderr(closed_output())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn diagnostic_output_failure_exits_with_two() {
+    for args in [vec![], vec!["--help"], vec!["--version"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+            .args(args)
+            .stdout(closed_output())
+            .stderr(closed_output())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_arguments_report_normal_errors() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let fixture = jsonl_fixture(
+        "non-utf8-errors",
+        &serde_json::json!(true),
+        &serde_json::json!({}),
+    );
+    let filename = OsStr::from_bytes(b"input-\xff.json");
+    for role in ["schema", "data"] {
+        for jsonl in [false, true] {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"));
+            command.current_dir(&fixture.0);
+            if jsonl {
+                command.args(["--output", "jsonl"]);
+            }
+            command.args(if role == "schema" {
+                [filename, OsStr::new("data.json")]
+            } else {
+                [OsStr::new("schema.json"), filename]
+            });
+            let output = command.output().unwrap();
+            assert_eq!(output.status.code(), Some(2));
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(stderr.starts_with(&format!("Error: failed to read {role} {filename:?}: ")));
+            assert!(!stderr.contains("panicked"));
+        }
+    }
+
+    for args in [
+        vec![filename],
+        vec![OsStr::new("--output"), filename, filename, filename],
+        vec![OsStr::from_bytes(b"--output=\xff"), filename],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "Error: Usage: jsonschema-check [--output jsonl] <schema.json> <data.json>\n"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "Requires a filesystem supporting non-UTF-8 file names"
+)]
+#[test]
+fn non_utf8_paths_support_validation_and_parse_errors() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let fixture = jsonl_fixture(
+        "non-utf8-paths",
+        &serde_json::json!(true),
+        &serde_json::json!({}),
+    );
+    for role in ["schema", "data"] {
+        let path = fixture.0.join(OsStr::from_bytes(b"input-\xff.json"));
+        for jsonl in [false, true] {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"));
+            if jsonl {
+                command.args(["--output", "jsonl"]);
+            }
+            command.arg(if role == "schema" {
+                path.clone()
+            } else {
+                fixture.0.join("schema.json")
+            });
+            command.arg(if role == "data" {
+                path.clone()
+            } else {
+                fixture.0.join("data.json")
+            });
+            for (contents, code) in [("true", 0), ("false", 1), ("{", 2)] {
+                if role == "data" {
+                    fs::write(fixture.0.join("schema.json"), "{\"const\":true}").unwrap();
+                }
+                fs::write(&path, contents).unwrap();
+                let output = command.output().unwrap();
+                assert_eq!(output.status.code(), Some(code));
+                match code {
+                    0 => {
+                        assert!(output.stdout.is_empty());
+                        assert!(output.stderr.is_empty());
+                    }
+                    1 if jsonl => {
+                        assert!(output.stderr.is_empty());
+                        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
+                    }
+                    1 => {
+                        assert!(output.stdout.is_empty());
+                        assert!(!output.stderr.is_empty());
+                    }
+                    _ => {
+                        assert!(output.stdout.is_empty());
+                        let stderr = String::from_utf8(output.stderr).unwrap();
+                        let native_path = path.as_os_str();
+                        assert!(stderr.starts_with(&format!(
+                            "Error: failed to parse {role} {native_path:?}: "
+                        )));
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn file_errors_identify_operation_role_and_escaped_path() {
     let fixture = Fixture(std::env::temp_dir().join(format!(
