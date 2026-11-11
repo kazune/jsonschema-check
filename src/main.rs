@@ -1,5 +1,5 @@
-use std::{env, fs, process};
 use serde_json::Value;
+use std::{env, fs, process};
 
 const USAGE: &str = "Usage: jsonschema-check <schema.json> <data.json>";
 
@@ -35,13 +35,13 @@ fn run() -> Result<bool, Box<dyn std::error::Error>> {
     }
 
     // ファイルの読み込みとJSONパース
-    let schema_bytes = fs::read(&args[1])
-        .map_err(|err| format!("failed to read schema {:?}: {err}", args[1]))?;
+    let schema_bytes =
+        fs::read(&args[1]).map_err(|err| format!("failed to read schema {:?}: {err}", args[1]))?;
     let schema: Value = serde_json::from_slice(&schema_bytes)
         .map_err(|err| format!("failed to parse schema {:?}: {err}", args[1]))?;
 
-    let data_bytes = fs::read(&args[2])
-        .map_err(|err| format!("failed to read data {:?}: {err}", args[2]))?;
+    let data_bytes =
+        fs::read(&args[2]).map_err(|err| format!("failed to read data {:?}: {err}", args[2]))?;
     let data: Value = serde_json::from_slice(&data_bytes)
         .map_err(|err| format!("failed to parse data {:?}: {err}", args[2]))?;
 
@@ -52,11 +52,7 @@ fn run() -> Result<bool, Box<dyn std::error::Error>> {
     let mut valid = true;
 
     for error in validator.iter_errors(&data) {
-        eprintln!(
-            "{}: {}",
-            error.instance_path(),
-            error
-        );
+        eprintln!("{}: {}", error.instance_path(), error);
         valid = false;
     }
 

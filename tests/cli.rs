@@ -88,7 +88,11 @@ fn file_errors_identify_operation_role_and_escaped_path() {
     fs::write(&valid_data, "{}").unwrap();
 
     for role in ["schema", "data"] {
-        for filename in ["input.json", "input with spaces.json", "input\"quoted\n.json"] {
+        for filename in [
+            "input.json",
+            "input with spaces.json",
+            "input\"quoted\n.json",
+        ] {
             let path = fixture.0.join(filename);
             let args = if role == "schema" {
                 [&path, &valid_data]
