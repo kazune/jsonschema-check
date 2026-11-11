@@ -31,6 +31,23 @@ For example, this schema explicitly selects Draft 2020-12:
 }
 ```
 
+### Schema references
+
+`$ref` can refer to subschemas within the same schema document, such as `#/definitions/item` or `#/$defs/item`.
+External schema files are not loaded, and HTTP or HTTPS references are not fetched.
+Relative references are not resolved against the schema file's directory.
+If compiling a schema requires an unavailable external resource or an unresolved internal reference, the program reports an error on standard error and exits with code `2` in both output modes.
+The standard meta-schemas for the supported drafts are bundled, so their `$schema` URIs do not require network access.
+
+### Format validation
+
+With the standard `$schema` URI for Draft 4, Draft 6, or Draft 7, recognized `format` values such as `email` are validated.
+With the standard `$schema` URI for Draft 2019-09 or Draft 2020-12, `format` is treated as an annotation and does not affect whether data is valid.
+This also applies when `$schema` is omitted, since the default draft is 2020-12.
+Unknown format names are ignored with these standard drafts.
+Other constraints, such as `type`, still apply.
+There is no CLI option to override format validation.
+
 ## Usage
 
 To validate data, pass the schema file path followed by the data file path, optionally preceded by `--output jsonl`.

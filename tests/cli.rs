@@ -586,3 +586,258 @@ fn validation_and_input_errors_keep_their_exit_codes() {
         }
     }
 }
+
+const DRAFT_URIS: [&str; 5] = [
+    "http://json-schema.org/draft-04/schema#",
+    "http://json-schema.org/draft-06/schema#",
+    "http://json-schema.org/draft-07/schema#",
+    "https://json-schema.org/draft/2019-09/schema",
+    "https://json-schema.org/draft/2020-12/schema",
+];
+
+fn assert_validation_output(fixture: &Fixture, jsonl: bool, expected_code: i32) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"));
+    if jsonl {
+        command.args(["--output", "jsonl"]);
+    }
+    let output = command
+        .arg(fixture.0.join("schema.json"))
+        .arg(fixture.0.join("data.json"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(expected_code),
+        "jsonl={jsonl}, stdout={:?}, stderr={:?}",
+        output.stdout,
+        output.stderr
+    );
+    match expected_code {
+        0 => {
+            assert_eq!(output.stdout, [] as [u8; 0]);
+            assert_eq!(output.stderr, [] as [u8; 0]);
+        }
+        1 if jsonl => {
+            assert_eq!(output.stderr, [] as [u8; 0]);
+            let stdout = std::str::from_utf8(&output.stdout).unwrap();
+            assert!(stdout.ends_with('\n'));
+            for line in stdout.lines() {
+                let record: serde_json::Value = serde_json::from_str(line).unwrap();
+                assert_eq!(record.as_object().unwrap().len(), 3);
+                for key in ["instancePath", "schemaPath", "message"] {
+                    assert!(record[key].is_string());
+                }
+            }
+        }
+        1 => {
+            assert_eq!(output.stdout, [] as [u8; 0]);
+            assert_ne!(output.stderr, [] as [u8; 0]);
+            assert!(
+                !std::str::from_utf8(&output.stderr)
+                    .unwrap()
+                    .starts_with("Error: ")
+            );
+        }
+        2 => {
+            assert_eq!(output.stdout, [] as [u8; 0]);
+            assert!(
+                std::str::from_utf8(&output.stderr)
+                    .unwrap()
+                    .starts_with("Error: ")
+            );
+        }
+        _ => panic!("unexpected exit code in test case: {expected_code}"),
+    }
+    output
+}
+
+#[test]
+fn schema_property_selects_each_supported_draft() {
+    let fixture = jsonl_fixture(
+        "draft-selection",
+        &serde_json::json!({}),
+        &serde_json::json!(0),
+    );
+    for (uri, mut schema, valid, invalid) in [
+        (
+            DRAFT_URIS[0],
+            serde_json::json!({"minimum": 5, "exclusiveMinimum": true}),
+            serde_json::json!(6),
+            serde_json::json!(5),
+        ),
+        (
+            DRAFT_URIS[1],
+            serde_json::json!({"const": 5}),
+            serde_json::json!(5),
+            serde_json::json!(6),
+        ),
+        (
+            DRAFT_URIS[2],
+            serde_json::json!({"if": {"type": "integer"}, "then": {"minimum": 5}}),
+            serde_json::json!(5),
+            serde_json::json!(4),
+        ),
+        (
+            DRAFT_URIS[3],
+            serde_json::json!({"items": [{"type": "integer"}], "additionalItems": false}),
+            serde_json::json!([5]),
+            serde_json::json!([5, 6]),
+        ),
+        (
+            DRAFT_URIS[4],
+            serde_json::json!({"prefixItems": [{"type": "integer"}], "items": false}),
+            serde_json::json!([5]),
+            serde_json::json!([5, 6]),
+        ),
+    ] {
+        schema["$schema"] = serde_json::json!(uri);
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        for (data, code) in [(valid, 0), (invalid, 1)] {
+            fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+            for jsonl in [false, true] {
+                assert_validation_output(&fixture, jsonl, code);
+            }
+        }
+    }
+}
+
+#[test]
+fn omitted_schema_property_uses_draft_2020_12() {
+    let fixture = jsonl_fixture(
+        "default-draft",
+        &serde_json::json!({"prefixItems": [{"type": "integer"}], "items": false}),
+        &serde_json::json!([5]),
+    );
+    for (data, code) in [(serde_json::json!([5]), 0), (serde_json::json!([5, 6]), 1)] {
+        fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+        for jsonl in [false, true] {
+            assert_validation_output(&fixture, jsonl, code);
+        }
+    }
+}
+
+#[test]
+fn tuple_schema_syntax_depends_on_the_selected_draft() {
+    let fixture = jsonl_fixture(
+        "draft-syntax",
+        &serde_json::json!({}),
+        &serde_json::json!([]),
+    );
+    for uri in DRAFT_URIS.into_iter().map(Some).chain([None]) {
+        let mut schema = serde_json::json!({"items": [{"type": "integer"}]});
+        if let Some(uri) = uri {
+            schema["$schema"] = serde_json::json!(uri);
+        }
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        let code = if uri.is_none() || uri == Some(DRAFT_URIS[4]) {
+            2
+        } else {
+            0
+        };
+        for jsonl in [false, true] {
+            assert_validation_output(&fixture, jsonl, code);
+        }
+    }
+}
+
+#[test]
+fn standard_drafts_control_format_validation() {
+    let fixture = jsonl_fixture("formats", &serde_json::json!({}), &serde_json::json!(""));
+    for uri in DRAFT_URIS.into_iter().map(Some).chain([None]) {
+        let mut schema = serde_json::json!({"type": "string", "format": "email"});
+        if let Some(uri) = uri {
+            schema["$schema"] = serde_json::json!(uri);
+        }
+        let invalid_format_code = i32::from(uri.is_some_and(|uri| DRAFT_URIS[..3].contains(&uri)));
+        for (data, code) in [
+            (serde_json::json!("test@example.com"), 0),
+            (serde_json::json!("not-an-email"), invalid_format_code),
+            (serde_json::json!(42), 1),
+        ] {
+            fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+            fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+            for jsonl in [false, true] {
+                assert_validation_output(&fixture, jsonl, code);
+            }
+        }
+        schema["format"] = serde_json::json!("unknown-format");
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        for (data, code) in [
+            (serde_json::json!("anything"), 0),
+            (serde_json::json!(42), 1),
+        ] {
+            fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+            for jsonl in [false, true] {
+                assert_validation_output(&fixture, jsonl, code);
+            }
+        }
+    }
+}
+
+#[test]
+fn internal_references_validate_and_missing_targets_report_errors() {
+    let fixture = jsonl_fixture(
+        "internal-refs",
+        &serde_json::json!({}),
+        &serde_json::json!(0),
+    );
+    for uri in DRAFT_URIS {
+        let mut schema = serde_json::json!({
+            "$schema": uri,
+            "definitions": {"item": {"type": "integer"}},
+            "$ref": "#/definitions/item",
+        });
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        for (data, code) in [
+            (serde_json::json!(42), 0),
+            (serde_json::json!("wrong type"), 1),
+        ] {
+            fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+            for jsonl in [false, true] {
+                assert_validation_output(&fixture, jsonl, code);
+            }
+        }
+        schema["$ref"] = serde_json::json!("#/definitions/missing");
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        for jsonl in [false, true] {
+            assert_validation_output(&fixture, jsonl, 2);
+        }
+    }
+}
+
+#[test]
+fn external_references_are_not_retrieved() {
+    let fixture = jsonl_fixture(
+        "external-refs",
+        &serde_json::json!({}),
+        &serde_json::json!(0),
+    );
+    let external = fixture.0.join("external.json");
+    fs::write(&external, "true").unwrap();
+    for (reference, diagnostic) in [
+        (
+            "http://example.invalid/external.json".to_owned(),
+            "`resolve-http` feature",
+        ),
+        (
+            "https://example.invalid/external.json".to_owned(),
+            "`resolve-http` feature",
+        ),
+        (
+            format!("file://{}", external.display()),
+            "`resolve-file` feature",
+        ),
+        ("external.json".to_owned(), "No base URI is available"),
+    ] {
+        let schema = serde_json::json!({"$ref": reference});
+        fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+        for jsonl in [false, true] {
+            let output = assert_validation_output(&fixture, jsonl, 2);
+            assert!(
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .contains(diagnostic)
+            );
+        }
+    }
+}
