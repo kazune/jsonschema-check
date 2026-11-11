@@ -76,6 +76,55 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn file_errors_identify_operation_role_and_escaped_path() {
+    let fixture = Fixture(std::env::temp_dir().join(format!(
+        "jsonschema-check-file-errors-{}",
+        std::process::id()
+    )));
+    fs::create_dir(&fixture.0).unwrap();
+    let valid_schema = fixture.0.join("valid-schema.json");
+    let valid_data = fixture.0.join("valid-data.json");
+    fs::write(&valid_schema, "true").unwrap();
+    fs::write(&valid_data, "{}").unwrap();
+
+    for role in ["schema", "data"] {
+        for filename in ["input.json", "input with spaces.json", "input\"quoted\n.json"] {
+            let path = fixture.0.join(filename);
+            let args = if role == "schema" {
+                [&path, &valid_data]
+            } else {
+                [&valid_schema, &path]
+            };
+
+            for operation in ["read", "parse"] {
+                let details = if operation == "read" {
+                    fs::read(&path).unwrap_err().to_string()
+                } else {
+                    fs::write(&path, "{\n").unwrap();
+                    serde_json::from_slice::<serde_json::Value>(b"{\n")
+                        .unwrap_err()
+                        .to_string()
+                };
+                let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+                    .args(args)
+                    .output()
+                    .unwrap();
+                assert_eq!(output.status.code(), Some(2));
+                assert!(output.stdout.is_empty());
+                assert_eq!(
+                    String::from_utf8(output.stderr).unwrap(),
+                    format!(
+                        "Error: failed to {operation} {role} {:?}: {details}\n",
+                        path.to_str().unwrap()
+                    )
+                );
+            }
+            fs::remove_file(&path).unwrap();
+        }
+    }
+}
+
+#[test]
 fn validation_and_input_errors_keep_their_exit_codes() {
     let fixture =
         Fixture(std::env::temp_dir().join(format!("jsonschema-check-cli-{}", std::process::id())));

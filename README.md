@@ -83,3 +83,6 @@ The instance path is a JSON Pointer into the data and is empty for errors at the
 
 Errors with exit code `2` are written to standard error with an `Error:` prefix.
 Missing or extra arguments produce the usage message with exit code `2`.
+File reading and JSON parsing errors identify the operation, the file's role (`schema` or `data`), and the supplied file path, followed by the underlying error details.
+Paths are enclosed in double quotes, with special characters such as quotes and newlines escaped.
+For example, a JSON parsing error in the schema has the form `Error: failed to parse schema "schema.json": <details>`.

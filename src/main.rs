@@ -35,11 +35,15 @@ fn run() -> Result<bool, Box<dyn std::error::Error>> {
     }
 
     // ファイルの読み込みとJSONパース
-    let schema: Value =
-        serde_json::from_slice(&fs::read(&args[1])?)?;
+    let schema_bytes = fs::read(&args[1])
+        .map_err(|err| format!("failed to read schema {:?}: {err}", args[1]))?;
+    let schema: Value = serde_json::from_slice(&schema_bytes)
+        .map_err(|err| format!("failed to parse schema {:?}: {err}", args[1]))?;
 
-    let data: Value =
-        serde_json::from_slice(&fs::read(&args[2])?)?;
+    let data_bytes = fs::read(&args[2])
+        .map_err(|err| format!("failed to read data {:?}: {err}", args[2]))?;
+    let data: Value = serde_json::from_slice(&data_bytes)
+        .map_err(|err| format!("failed to parse data {:?}: {err}", args[2]))?;
 
     // スキーマをコンパイル
     let validator = jsonschema::validator_for(&schema)?;
