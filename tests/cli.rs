@@ -288,12 +288,8 @@ fn jsonl_output_failure_exits_with_two() {
         &serde_json::json!(false),
         &serde_json::json!({}),
     );
-    let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
-    drop(reader);
     let output = jsonl_command(&fixture)
-        .stdout(std::process::Stdio::from(std::os::fd::OwnedFd::from(
-            writer,
-        )))
+        .stdout(closed_output())
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
@@ -307,8 +303,37 @@ fn jsonl_output_failure_exits_with_two() {
 #[cfg(unix)]
 fn closed_output() -> std::process::Stdio {
     let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
+    let output = shutdown_output(writer);
     drop(reader);
+    output
+}
+
+#[cfg(unix)]
+fn shutdown_output(writer: std::os::unix::net::UnixStream) -> std::process::Stdio {
+    // A concurrent spawn can inherit the peer before CLOEXEC is set on macOS.
+    writer.shutdown(std::net::Shutdown::Write).unwrap();
     std::process::Stdio::from(std::os::fd::OwnedFd::from(writer))
+}
+
+#[cfg(unix)]
+#[test]
+fn output_failure_with_retained_peer_exits_with_two() {
+    for option in ["--help", "--version"] {
+        let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
+        let retained_reader = reader.try_clone().unwrap();
+        drop(reader);
+        let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
+            .arg(option)
+            .stdout(shutdown_output(writer))
+            .output()
+            .unwrap();
+        drop(retained_reader);
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.starts_with("Error: "));
+        assert!(!stderr.contains("panicked"));
+    }
 }
 
 #[cfg(unix)]
