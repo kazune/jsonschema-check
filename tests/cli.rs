@@ -15,7 +15,7 @@ fn run(args: &[&str]) -> Output {
 fn help_succeeds_without_files() {
     let output = run(&["--help"]);
     assert_eq!(output.status.code(), Some(0));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let help = String::from_utf8(output.stdout).unwrap();
     for text in [
         "Usage: jsonschema-check [--output jsonl] <schema.json> <data.json>",
@@ -34,7 +34,7 @@ fn help_succeeds_without_files() {
 fn version_succeeds_without_files() {
     let output = run(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
         format!("jsonschema-check {}\n", env!("CARGO_PKG_VERSION"))
@@ -139,13 +139,13 @@ fn help_and_version_in_file_positions_are_literal_paths() {
                 });
                 let output = command.output().unwrap();
                 assert_eq!(output.status.code(), Some(0));
-                assert!(output.stdout.is_empty());
-                assert!(output.stderr.is_empty());
+                assert_eq!(output.stdout, [] as [u8; 0]);
+                assert_eq!(output.stderr, [] as [u8; 0]);
 
                 fs::remove_file(&path).unwrap();
                 let output = command.output().unwrap();
                 assert_eq!(output.status.code(), Some(2));
-                assert!(output.stdout.is_empty());
+                assert_eq!(output.stdout, [] as [u8; 0]);
                 assert!(
                     String::from_utf8(output.stderr)
                         .unwrap()
@@ -165,8 +165,8 @@ fn help_and_version_in_file_positions_are_literal_paths() {
         }
         let output = command.args(["--help", "--version"]).output().unwrap();
         assert_eq!(output.status.code(), Some(0));
-        assert!(output.stdout.is_empty());
-        assert!(output.stderr.is_empty());
+        assert_eq!(output.stdout, [] as [u8; 0]);
+        assert_eq!(output.stderr, [] as [u8; 0]);
     }
 }
 
@@ -183,7 +183,7 @@ fn jsonl_reports_all_errors_with_three_string_attributes() {
     );
     let output = jsonl_command(&fixture).output().unwrap();
     assert_eq!(output.status.code(), Some(1));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.ends_with('\n'));
     assert!(stdout.contains("\\n"));
@@ -198,7 +198,7 @@ fn jsonl_reports_all_errors_with_three_string_attributes() {
         for key in ["instancePath", "schemaPath", "message"] {
             assert!(record[key].is_string());
         }
-        assert!(!record["message"].as_str().unwrap().is_empty());
+        assert_ne!(record["message"].as_str().unwrap(), "");
     }
     for (instance, schema) in [
         ("", "/required"),
@@ -225,7 +225,7 @@ fn jsonl_root_schema_error_uses_empty_pointers() {
     );
     let output = jsonl_command(&fixture).output().unwrap();
     assert_eq!(output.status.code(), Some(1));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout.lines().count(), 1);
     let record: serde_json::Value = serde_json::from_str(stdout.trim_end()).unwrap();
@@ -242,8 +242,8 @@ fn jsonl_success_is_silent() {
     );
     let output = jsonl_command(&fixture).output().unwrap();
     assert_eq!(output.status.code(), Some(0));
-    assert!(output.stdout.is_empty());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
+    assert_eq!(output.stderr, [] as [u8; 0]);
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn jsonl_input_errors_remain_text_on_stderr() {
         }
         let output = jsonl_command(&fixture).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout, [] as [u8; 0]);
         assert!(
             String::from_utf8(output.stderr)
                 .unwrap()
@@ -342,7 +342,7 @@ fn text_output_failure_exits_with_two() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
 }
 
 #[cfg(unix)]
@@ -384,7 +384,7 @@ fn non_utf8_arguments_report_normal_errors() {
             });
             let output = command.output().unwrap();
             assert_eq!(output.status.code(), Some(2));
-            assert!(output.stdout.is_empty());
+            assert_eq!(output.stdout, [] as [u8; 0]);
             let stderr = String::from_utf8(output.stderr).unwrap();
             assert!(stderr.starts_with(&format!("Error: failed to read {role} {filename:?}: ")));
             assert!(!stderr.contains("panicked"));
@@ -401,7 +401,7 @@ fn non_utf8_arguments_report_normal_errors() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(2));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout, [] as [u8; 0]);
         assert_eq!(
             String::from_utf8(output.stderr).unwrap(),
             "Error: Usage: jsonschema-check [--output jsonl] <schema.json> <data.json>\n"
@@ -449,19 +449,19 @@ fn non_utf8_paths_support_validation_and_parse_errors() {
                 assert_eq!(output.status.code(), Some(code));
                 match code {
                     0 => {
-                        assert!(output.stdout.is_empty());
-                        assert!(output.stderr.is_empty());
+                        assert_eq!(output.stdout, [] as [u8; 0]);
+                        assert_eq!(output.stderr, [] as [u8; 0]);
                     }
                     1 if jsonl => {
-                        assert!(output.stderr.is_empty());
+                        assert_eq!(output.stderr, [] as [u8; 0]);
                         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap();
                     }
                     1 => {
-                        assert!(output.stdout.is_empty());
-                        assert!(!output.stderr.is_empty());
+                        assert_eq!(output.stdout, [] as [u8; 0]);
+                        assert_ne!(output.stderr, [] as [u8; 0]);
                     }
                     _ => {
-                        assert!(output.stdout.is_empty());
+                        assert_eq!(output.stdout, [] as [u8; 0]);
                         let stderr = String::from_utf8(output.stderr).unwrap();
                         let native_path = path.as_os_str();
                         assert!(stderr.starts_with(&format!(
@@ -513,7 +513,7 @@ fn file_errors_identify_operation_role_and_escaped_path() {
                     .output()
                     .unwrap();
                 assert_eq!(output.status.code(), Some(2));
-                assert!(output.stdout.is_empty());
+                assert_eq!(output.stdout, [] as [u8; 0]);
                 assert_eq!(
                     String::from_utf8(output.stderr).unwrap(),
                     format!(
@@ -544,9 +544,9 @@ fn validation_and_input_errors_keep_their_exit_codes() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(code));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.stdout, [] as [u8; 0]);
         match code {
-            0 => assert!(output.stderr.is_empty()),
+            0 => assert_eq!(output.stderr, [] as [u8; 0]),
             1 => assert!(
                 String::from_utf8(output.stderr)
                     .unwrap()
