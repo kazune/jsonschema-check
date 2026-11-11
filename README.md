@@ -21,6 +21,7 @@ The supported drafts are Draft 4, Draft 6, Draft 7, Draft 2019-09, and Draft 202
 The draft is detected automatically from the schema's `$schema` property.
 If `$schema` is omitted, Draft 2020-12 is used.
 There is no CLI option to select a draft.
+See the [validation behavior appendix](#appendix-validation-behavior) for format validation and implementation details.
 
 For example, this schema explicitly selects Draft 2020-12:
 
@@ -38,15 +39,6 @@ External schema files are not loaded, and HTTP or HTTPS references are not fetch
 Relative references are not resolved against the schema file's directory.
 If compiling a schema requires an unavailable external resource or an unresolved internal reference, the program reports an error on standard error and exits with code `2` in both output modes.
 The standard meta-schemas for the supported drafts are bundled, so their `$schema` URIs do not require network access.
-
-### Format validation
-
-With the standard `$schema` URI for Draft 4, Draft 6, or Draft 7, recognized `format` values such as `email` are validated.
-With the standard `$schema` URI for Draft 2019-09 or Draft 2020-12, `format` is treated as an annotation and does not affect whether data is valid.
-This also applies when `$schema` is omitted, since the default draft is 2020-12.
-Unknown format names are ignored with these standard drafts.
-Other constraints, such as `type`, still apply.
-There is no CLI option to override format validation.
 
 ## Usage
 
@@ -157,3 +149,24 @@ File reading and JSON parsing errors identify the operation, the file's role (`s
 Paths are enclosed in double quotes, with special characters such as quotes and newlines escaped.
 Non-UTF-8 portions of paths are escaped in diagnostics.
 For example, a JSON parsing error in the schema has the form `Error: failed to parse schema "schema.json": <details>`.
+
+## Appendix: Validation behavior
+
+### Format validation
+
+With the standard `$schema` URI for Draft 4, Draft 6, or Draft 7, recognized `format` values such as `email` are validated.
+With the standard `$schema` URI for Draft 2019-09 or Draft 2020-12, `format` is treated as an annotation and does not affect whether data is valid.
+This also applies when `$schema` is omitted, since the default draft is 2020-12.
+Unknown format names are ignored with these standard drafts.
+Other constraints, such as `type`, still apply.
+There is no CLI option to override format validation.
+
+Draft 2020-12 also supports the [Format-Assertion vocabulary](https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-validation-01#section-7.2.2), which requires format validation when selected through a meta-schema declaring that vocabulary.
+A custom meta-schema can be embedded in the same document under `$defs`, identified by `$id`, and selected through `$schema` without external retrieval.
+Adding `$vocabulary` to a schema that still selects the standard Draft 2020-12 meta-schema does not enable format assertions.
+With Format-Assertion active, unknown format names cause a schema compilation error with exit code `2`.
+
+### Further details
+
+For regular expression handling and other validation details, consult the [`jsonschema` library documentation](https://docs.rs/jsonschema) for the version specified in `Cargo.toml`.
+The JSON Schema documentation describes [regular expression syntax and portability](https://json-schema.org/understanding-json-schema/reference/regular_expressions).
