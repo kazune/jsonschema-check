@@ -5,9 +5,35 @@ A minimal JSON Schema validation CLI with a small dependency footprint.
 `jsonschema-check` validates a JSON file against a JSON Schema and reports validation errors as text to standard error or, with `--output jsonl`, as JSON Lines to standard output.
 It uses the `jsonschema` library with default features disabled to keep dependencies small.
 
-## Build
+## Installation
 
 A Rust toolchain with support for edition 2024 is required.
+
+To install from a local clone:
+
+```sh
+git clone https://github.com/kazune/jsonschema-check.git
+cd jsonschema-check
+cargo install --path . --locked
+```
+
+To install directly from a specific GitHub commit, replace `COMMIT` with the full commit hash:
+
+```sh
+cargo install --git https://github.com/kazune/jsonschema-check.git --rev COMMIT --locked
+```
+
+Both methods build from source and use the dependencies recorded in `Cargo.lock`.
+With Cargo's default installation settings, the executable is installed in `$HOME/.cargo/bin`.
+Ensure Cargo's installation `bin` directory is on your `PATH`, then check the installation:
+
+```sh
+jsonschema-check --version
+```
+
+## Build
+
+To build without installing:
 
 ```sh
 cargo build --release --locked
