@@ -15,6 +15,22 @@ cargo build --release --locked
 
 The executable is available at `target/release/jsonschema-check`.
 
+## Supported JSON Schema drafts
+
+The supported drafts are Draft 4, Draft 6, Draft 7, Draft 2019-09, and Draft 2020-12.
+The draft is detected automatically from the schema's `$schema` property.
+If `$schema` is omitted, Draft 2020-12 is used.
+There is no CLI option to select a draft.
+
+For example, this schema explicitly selects Draft 2020-12:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "string"
+}
+```
+
 ## Usage
 
 To validate data, pass the schema file path followed by the data file path, optionally preceded by `--output jsonl`.
