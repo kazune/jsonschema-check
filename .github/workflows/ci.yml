@@ -26,4 +26,4 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Run checks
-        run: make check
+        run: make ci

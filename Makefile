@@ -1,8 +1,10 @@
 CARGO := cargo
 
-.PHONY: check fmt fmt-check lint test test-release doc audit
+.PHONY: ci check fmt fmt-check lint test test-release doc audit
 
 check: fmt-check lint test doc
+
+ci: check test-release
 
 fmt:
 	$(CARGO) fmt --all
