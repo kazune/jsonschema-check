@@ -595,6 +595,51 @@ const DRAFT_URIS: [&str; 5] = [
     "https://json-schema.org/draft/2020-12/schema",
 ];
 
+#[test]
+fn readme_examples_match_cli_output() {
+    fn code_block<'a>(text: &'a str, language: &str) -> &'a str {
+        text.split_once(&format!("```{language}\n"))
+            .expect("README example code block is missing")
+            .1
+            .split_once("\n```")
+            .expect("README example code block is not closed")
+            .0
+    }
+
+    let readme = include_str!("../README.md");
+    let usage = readme
+        .split_once("## Usage\n")
+        .expect("README Usage section is missing")
+        .1;
+    let schema: serde_json::Value = serde_json::from_str(code_block(usage, "json")).unwrap();
+    let data_section = usage
+        .split_once("Save the following data as `data.json`:")
+        .expect("README data example is missing")
+        .1;
+    let mut data: serde_json::Value =
+        serde_json::from_str(code_block(data_section, "json")).unwrap();
+    let expected_text = format!("{}\n", code_block(usage, "text"));
+    let expected_jsonl: serde_json::Value =
+        serde_json::from_str(code_block(usage, "jsonl")).unwrap();
+    let fixture = jsonl_fixture("readme-examples", &schema, &data);
+
+    for jsonl in [false, true] {
+        assert_validation_output(&fixture, jsonl, 0);
+    }
+
+    data["age"] = serde_json::json!(-1);
+    fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+    for jsonl in [false, true] {
+        let output = assert_validation_output(&fixture, jsonl, 1);
+        if jsonl {
+            let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(record, expected_jsonl);
+        } else {
+            assert_eq!(output.stderr, expected_text.as_bytes());
+        }
+    }
+}
+
 fn assert_validation_output(fixture: &Fixture, jsonl: bool, expected_code: i32) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"));
     if jsonl {

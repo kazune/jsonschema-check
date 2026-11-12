@@ -1,6 +1,6 @@
 CARGO := cargo
 
-.PHONY: check fmt fmt-check lint test doc audit
+.PHONY: check fmt fmt-check lint test test-release doc audit
 
 check: fmt-check lint test doc
 
@@ -16,6 +16,9 @@ lint:
 
 test:
 	$(CARGO) test --workspace --locked
+
+test-release:
+	$(CARGO) test --release --workspace --locked
 
 doc:
 	RUSTDOCFLAGS="-D warnings" \
