@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 - 2026-11-13
 
 - Enable IDNA support for the `idn-email` and `idn-hostname` formats, including validation under Draft 2020-12 Format-Assertion.
 - Recognized IDNA formats reject invalid values with exit code `1` when format validation is active, rather than being ignored or rejected as unknown formats.
