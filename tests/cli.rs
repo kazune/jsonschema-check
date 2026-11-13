@@ -897,29 +897,51 @@ fn vocabulary_on_a_standard_schema_does_not_enable_format_assertions() {
 }
 
 #[test]
-fn idna_formats_are_ignored_or_rejected_as_unknown() {
+fn idna_formats_follow_draft_and_assertion_rules() {
     let fixture = jsonl_fixture(
-        "idna-disabled",
+        "idna-formats",
         &serde_json::json!({}),
         &serde_json::json!(""),
     );
     for (format, values) in [
-        ("idn-hostname", ["実例.テスト", "-実例"]),
-        ("idn-email", ["α@παρ.gr", "a@-.gr"]),
+        (
+            "idn-hostname",
+            [
+                ("実例.テスト", true),
+                ("example.com", true),
+                ("xn--r8jz45g.xn--zckzah", true),
+                ("-実例", false),
+                ("a b", false),
+                ("", false),
+            ],
+        ),
+        (
+            "idn-email",
+            [
+                ("α@παρ.gr", true),
+                ("test@example.com", true),
+                ("test@xn--r8jz45g.xn--zckzah", true),
+                ("a@-.gr", false),
+                ("not an email", false),
+                ("", false),
+            ],
+        ),
     ] {
-        for (uri, code) in DRAFT_URIS.into_iter().map(|uri| (Some(uri), 0)).chain([
-            (None, 0),
-            (
-                Some("https://json-schema.org/draft/2020-12/meta/format-assertion"),
-                2,
-            ),
+        for uri in DRAFT_URIS.into_iter().map(Some).chain([
+            None,
+            Some("https://json-schema.org/draft/2020-12/meta/format-assertion"),
         ]) {
+            let asserts_formats = uri
+                == Some("https://json-schema.org/draft/2020-12/meta/format-assertion")
+                || (uri.is_some_and(|uri| DRAFT_URIS[..3].contains(&uri))
+                    && (format == "idn-email" || uri == Some(DRAFT_URIS[2])));
             let mut schema = serde_json::json!({"type": "string", "format": format});
             if let Some(uri) = uri {
                 schema["$schema"] = serde_json::json!(uri);
             }
             fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
-            for value in values {
+            for (value, valid) in values {
+                let code = i32::from(asserts_formats && !valid);
                 fs::write(
                     fixture.0.join("data.json"),
                     serde_json::json!(value).to_string(),
@@ -927,12 +949,14 @@ fn idna_formats_are_ignored_or_rejected_as_unknown() {
                 .unwrap();
                 for jsonl in [false, true] {
                     let output = assert_validation_output(&fixture, jsonl, code);
-                    if code == 2 {
-                        assert!(
-                            String::from_utf8(output.stderr)
-                                .unwrap()
-                                .contains(&format!("Unknown format: '{format}'"))
-                        );
+                    if code == 1 && jsonl {
+                        let record: serde_json::Value =
+                            serde_json::from_slice(&output.stdout).unwrap();
+                        assert_eq!(record["instancePath"], "");
+                        assert_eq!(record["schemaPath"], "/format");
+                        assert!(record["message"].as_str().unwrap().contains(format));
+                    } else if code == 1 {
+                        assert!(String::from_utf8(output.stderr).unwrap().contains(format));
                     }
                 }
             }
