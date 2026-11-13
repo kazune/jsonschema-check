@@ -192,6 +192,9 @@ A custom meta-schema can be embedded in the same document under `$defs`, identif
 Adding `$vocabulary` to a schema that still selects the standard Draft 2020-12 meta-schema does not enable format assertions.
 With Format-Assertion active, unknown format names cause a schema compilation error with exit code `2`.
 
+The `idna` feature is disabled, so the internationalized `idn-hostname` and `idn-email` formats are not supported.
+Both names are treated as unknown formats: their values are not checked with the standard draft meta-schemas, and selecting Format-Assertion causes a schema compilation error with exit code `2`, even for valid internationalized names or addresses.
+
 ### Numeric precision
 
 JSON numbers in both schema and data files are parsed and validated with arbitrary precision.
