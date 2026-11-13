@@ -8,6 +8,7 @@ Initial release.
 - Detect the draft from `$schema`, defaulting to Draft 2020-12 when omitted.
 - Preserve arbitrary-precision integers and decimals when parsing and validating schema and data files, including numeric bounds, equality constraints, and `multipleOf`.
 - Resolve references within the schema document without fetching external schema files or HTTP/HTTPS resources.
+- The `idn-hostname` and `idn-email` formats are unsupported: standard draft meta-schemas ignore them, while Format-Assertion rejects them as unknown formats.
 - Report validation errors as text on standard error or, with `--output jsonl`, as JSON Lines on standard output with `instancePath`, `schemaPath`, and `message` attributes.
 - Provide `--help` and `--version` when passed as the sole argument.
 - Use exit code `0` for successful validation or help/version output, `1` for validation failure, and `2` for argument, file reading, JSON parsing, schema compilation, or output errors.
