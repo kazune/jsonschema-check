@@ -886,3 +886,230 @@ fn external_references_are_not_retrieved() {
         }
     }
 }
+
+fn assert_numeric_cases(name: &str, cases: &[(&str, &str, i32)]) {
+    let fixture = jsonl_fixture(name, &serde_json::json!({}), &serde_json::json!(0));
+    for &(schema, data, code) in cases {
+        // Write the original JSON text so Rust literals cannot round the numbers.
+        fs::write(fixture.0.join("schema.json"), schema).unwrap();
+        fs::write(fixture.0.join("data.json"), data).unwrap();
+        for jsonl in [false, true] {
+            assert_validation_output(&fixture, jsonl, code);
+        }
+    }
+}
+
+#[test]
+fn large_integers_preserve_equality_and_integer_type() {
+    assert_numeric_cases(
+        "large-integers",
+        &[
+            (
+                r#"{"const":18446744073709551616}"#,
+                "18446744073709551616",
+                0,
+            ),
+            (
+                r#"{"const":18446744073709551616}"#,
+                "18446744073709551617",
+                1,
+            ),
+            (
+                r#"{"const":-9223372036854775809}"#,
+                "-9223372036854775809",
+                0,
+            ),
+            (
+                r#"{"const":-9223372036854775809}"#,
+                "-9223372036854775810",
+                1,
+            ),
+            (
+                r#"{"enum":[18446744073709551616]}"#,
+                "18446744073709551616",
+                0,
+            ),
+            (
+                r#"{"enum":[18446744073709551616]}"#,
+                "18446744073709551617",
+                1,
+            ),
+            (
+                r#"{"uniqueItems":true}"#,
+                "[18446744073709551616,18446744073709551617]",
+                0,
+            ),
+            (
+                r#"{"uniqueItems":true}"#,
+                "[18446744073709551616,18446744073709551616]",
+                1,
+            ),
+            (r#"{"type":"integer"}"#, "18446744073709551616", 0),
+            (r#"{"type":"integer"}"#, "18446744073709551616.1", 1),
+        ],
+    );
+}
+
+#[test]
+fn high_precision_decimals_preserve_equality() {
+    assert_numeric_cases(
+        "precise-decimals",
+        &[
+            (
+                r#"{"const":0.123456789012345678901}"#,
+                "0.123456789012345678901",
+                0,
+            ),
+            (
+                r#"{"const":0.123456789012345678901}"#,
+                "0.123456789012345678902",
+                1,
+            ),
+            (
+                r#"{"enum":[0.123456789012345678901]}"#,
+                "0.123456789012345678901",
+                0,
+            ),
+            (
+                r#"{"enum":[0.123456789012345678901]}"#,
+                "0.123456789012345678902",
+                1,
+            ),
+            (
+                r#"{"uniqueItems":true}"#,
+                "[0.123456789012345678901,0.123456789012345678902]",
+                0,
+            ),
+            (
+                r#"{"uniqueItems":true}"#,
+                "[0.123456789012345678901,0.123456789012345678901]",
+                1,
+            ),
+            (r#"{"const":0.1}"#, "0.100000000000000000000", 0),
+        ],
+    );
+}
+
+#[test]
+fn numeric_bounds_preserve_large_and_decimal_boundaries() {
+    assert_numeric_cases(
+        "precise-bounds",
+        &[
+            (
+                r#"{"minimum":18446744073709551617}"#,
+                "18446744073709551617",
+                0,
+            ),
+            (
+                r#"{"minimum":18446744073709551617}"#,
+                "18446744073709551616",
+                1,
+            ),
+            (
+                r#"{"maximum":18446744073709551616}"#,
+                "18446744073709551616",
+                0,
+            ),
+            (
+                r#"{"maximum":18446744073709551616}"#,
+                "18446744073709551617",
+                1,
+            ),
+            (
+                r#"{"exclusiveMinimum":18446744073709551616}"#,
+                "18446744073709551617",
+                0,
+            ),
+            (
+                r#"{"exclusiveMinimum":18446744073709551616}"#,
+                "18446744073709551616",
+                1,
+            ),
+            (
+                r#"{"exclusiveMaximum":18446744073709551617}"#,
+                "18446744073709551616",
+                0,
+            ),
+            (
+                r#"{"exclusiveMaximum":18446744073709551617}"#,
+                "18446744073709551617",
+                1,
+            ),
+            (
+                r#"{"minimum":0.123456789012345678902}"#,
+                "0.123456789012345678902",
+                0,
+            ),
+            (
+                r#"{"minimum":0.123456789012345678902}"#,
+                "0.123456789012345678901",
+                1,
+            ),
+            (
+                r#"{"maximum":0.123456789012345678901}"#,
+                "0.123456789012345678901",
+                0,
+            ),
+            (
+                r#"{"maximum":0.123456789012345678901}"#,
+                "0.123456789012345678902",
+                1,
+            ),
+        ],
+    );
+}
+
+#[test]
+fn multiple_of_uses_exact_decimal_and_integer_arithmetic() {
+    assert_numeric_cases(
+        "precise-multiples",
+        &[
+            (r#"{"multipleOf":0.1}"#, "0.3", 0),
+            (
+                r#"{"multipleOf":0.1}"#,
+                "0.3000000000000000000000000000001",
+                1,
+            ),
+            (r#"{"multipleOf":0.1}"#, "-0.3", 0),
+            (r#"{"multipleOf":3}"#, "18446744073709551618", 0),
+            (r#"{"multipleOf":3}"#, "18446744073709551619", 1),
+            (r#"{"multipleOf":1e-400}"#, "3e-400", 0),
+            (r#"{"multipleOf":1e-400}"#, "3.1e-400", 1),
+        ],
+    );
+}
+
+#[test]
+fn numbers_outside_f64_range_are_validated_without_overflow_or_underflow() {
+    assert_numeric_cases(
+        "large-exponents",
+        &[
+            (r#"{"type":"number"}"#, "1e400", 0),
+            (r#"{"type":"number"}"#, "1e-400", 0),
+            (r#"{"type":"integer"}"#, "1e400", 0),
+            (r#"{"type":"integer"}"#, "1e-400", 1),
+            (r#"{"minimum":1e400}"#, "1e400", 0),
+            (r#"{"minimum":1e400}"#, "9e399", 1),
+            (r#"{"const":1e400}"#, "10e399", 0),
+            (r#"{"const":1e400}"#, "1e401", 1),
+            (r#"{"const":0}"#, "1e-400", 1),
+            (r#"{"maximum":-1e400}"#, "-2e400", 0),
+            (r#"{"maximum":-1e400}"#, "-9e399", 1),
+        ],
+    );
+}
+
+#[test]
+fn arbitrary_precision_still_rejects_invalid_json_numbers_and_schemas() {
+    assert_numeric_cases(
+        "invalid-numbers",
+        &[
+            (r#"{"type":"number"}"#, "01", 2),
+            (r#"{"type":"number"}"#, "1e", 2),
+            (r#"{"type":"number"}"#, "NaN", 2),
+            (r#"{"type":"number"}"#, "Infinity", 2),
+            (r#"{"const":01}"#, "0", 2),
+            (r#"{"multipleOf":0}"#, "0", 2),
+        ],
+    );
+}

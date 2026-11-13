@@ -192,6 +192,13 @@ A custom meta-schema can be embedded in the same document under `$defs`, identif
 Adding `$vocabulary` to a schema that still selects the standard Draft 2020-12 meta-schema does not enable format assertions.
 With Format-Assertion active, unknown format names cause a schema compilation error with exit code `2`.
 
+### Numeric precision
+
+JSON numbers in both schema and data files are parsed and validated with arbitrary precision.
+Large integers and decimal values retain their precision without rounding to `f64`.
+This applies to numeric comparisons, equality constraints, and `multipleOf`, including values written with exponents such as `1e400` or `1e-400`.
+Processing time and memory use depend on the size of the numbers and the validation constraints.
+
 ### Further details
 
 For regular expression handling and other validation details, consult the [`jsonschema` library documentation](https://docs.rs/jsonschema) for the version specified in `Cargo.toml`.

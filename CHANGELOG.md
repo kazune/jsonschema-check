@@ -6,6 +6,7 @@ Initial release.
 
 - Validate a JSON data file against a JSON Schema file using Draft 4, Draft 6, Draft 7, Draft 2019-09, or Draft 2020-12.
 - Detect the draft from `$schema`, defaulting to Draft 2020-12 when omitted.
+- Preserve arbitrary-precision integers and decimals when parsing and validating schema and data files, including numeric bounds, equality constraints, and `multipleOf`.
 - Resolve references within the schema document without fetching external schema files or HTTP/HTTPS resources.
 - Report validation errors as text on standard error or, with `--output jsonl`, as JSON Lines on standard output with `instancePath`, `schemaPath`, and `message` attributes.
 - Provide `--help` and `--version` when passed as the sole argument.
