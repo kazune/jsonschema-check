@@ -820,6 +820,83 @@ fn standard_drafts_control_format_validation() {
 }
 
 #[test]
+fn format_assertion_vocabulary_validates_email_and_rejects_unknown_formats() {
+    let mut schema = serde_json::json!({
+        "$schema": "https://example.com/meta/format-assertion",
+        "$defs": {
+            "meta": {
+                "$id": "https://example.com/meta/format-assertion",
+                "$schema": DRAFT_URIS[4],
+                "$ref": DRAFT_URIS[4],
+                "$vocabulary": {
+                    "https://json-schema.org/draft/2020-12/vocab/core": true,
+                    "https://json-schema.org/draft/2020-12/vocab/validation": true,
+                    "https://json-schema.org/draft/2020-12/vocab/format-assertion": true,
+                },
+            },
+        },
+        "type": "string",
+        "format": "email",
+    });
+    let fixture = jsonl_fixture("format-assertion", &schema, &serde_json::json!(""));
+    for (data, code) in [
+        (serde_json::json!("test@example.com"), 0),
+        (serde_json::json!("not-an-email"), 1),
+        (serde_json::json!(42), 1),
+    ] {
+        fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+        for jsonl in [false, true] {
+            let output = assert_validation_output(&fixture, jsonl, code);
+            if jsonl && code == 1 {
+                let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(record["instancePath"], "");
+                assert_eq!(
+                    record["schemaPath"],
+                    if data.is_string() { "/format" } else { "/type" }
+                );
+            }
+        }
+    }
+
+    schema["format"] = serde_json::json!("unknown-format");
+    fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
+    fs::write(fixture.0.join("data.json"), r#""anything""#).unwrap();
+    for jsonl in [false, true] {
+        let output = assert_validation_output(&fixture, jsonl, 2);
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("Unknown format: 'unknown-format'")
+        );
+    }
+}
+
+#[test]
+fn vocabulary_on_a_standard_schema_does_not_enable_format_assertions() {
+    let schema = serde_json::json!({
+        "$schema": DRAFT_URIS[4],
+        "$vocabulary": {
+            "https://json-schema.org/draft/2020-12/vocab/core": true,
+            "https://json-schema.org/draft/2020-12/vocab/validation": true,
+            "https://json-schema.org/draft/2020-12/vocab/format-assertion": true,
+        },
+        "type": "string",
+        "format": "email",
+    });
+    let fixture = jsonl_fixture("schema-vocabulary", &schema, &serde_json::json!(""));
+    for (data, code) in [
+        (serde_json::json!("test@example.com"), 0),
+        (serde_json::json!("not-an-email"), 0),
+        (serde_json::json!(42), 1),
+    ] {
+        fs::write(fixture.0.join("data.json"), data.to_string()).unwrap();
+        for jsonl in [false, true] {
+            assert_validation_output(&fixture, jsonl, code);
+        }
+    }
+}
+
+#[test]
 fn internal_references_validate_and_missing_targets_report_errors() {
     let fixture = jsonl_fixture(
         "internal-refs",
