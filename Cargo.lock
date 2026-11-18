@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-check"
-version = "0.2.1"
+version = "0.2.2-dev"
 dependencies = [
  "jsonschema",
  "serde_json",
