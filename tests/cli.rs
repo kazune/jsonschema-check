@@ -487,7 +487,8 @@ fn non_utf8_paths_support_validation_and_parse_errors() {
             } else {
                 fixture.0.join("data.json")
             });
-            for (contents, code) in [("true", 0), ("false", 1), ("{", 2)] {
+            let parse_error_code = if role == "schema" { 3 } else { 2 };
+            for (contents, code) in [("true", 0), ("false", 1), ("{", parse_error_code)] {
                 if role == "data" {
                     fs::write(fixture.0.join("schema.json"), "{\"const\":true}").unwrap();
                 }
