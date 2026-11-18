@@ -16,21 +16,49 @@ enum OutputFormat {
     Jsonl,
 }
 
+enum ExitCode {
+    Ok = 0,
+    ValidationFailed = 1,
+    InvalidDataJson = 2,
+    InvalidSchema = 3,
+    Other = 4,
+}
+
+struct RunError {
+    code: ExitCode,
+    message: String,
+}
+
+impl RunError {
+    fn new(code: ExitCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<io::Error> for RunError {
+    fn from(error: io::Error) -> Self {
+        Self::new(ExitCode::Other, error.to_string())
+    }
+}
+
 fn is_file_arg(arg: &OsStr) -> bool {
     arg != "--output" && !arg.as_encoded_bytes().starts_with(b"--output=")
 }
 
-fn run() -> Result<bool, Box<dyn std::error::Error>> {
+fn run() -> Result<ExitCode, RunError> {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
 
     match args.as_slice() {
         [arg] if arg == "--help" => {
             print_help()?;
-            Ok(true)
+            Ok(ExitCode::Ok)
         }
         [arg] if arg == "--version" => {
             print_version()?;
-            Ok(true)
+            Ok(ExitCode::Ok)
         }
         [option, format, schema, data]
             if option == "--output"
@@ -43,7 +71,7 @@ fn run() -> Result<bool, Box<dyn std::error::Error>> {
         [schema, data] if is_file_arg(schema) && is_file_arg(data) => {
             validate(Path::new(schema), Path::new(data), OutputFormat::Text)
         }
-        _ => Err(USAGE.into()),
+        _ => Err(RunError::new(ExitCode::Other, USAGE)),
     }
 }
 
@@ -57,7 +85,7 @@ fn print_help() -> io::Result<()> {
          Usage: jsonschema-check --version\n\n\
          Arguments:\n  <schema.json>  Path to the JSON Schema file\n  <data.json>    Path to the JSON data file\n\n\
          Options:\n  --help         Print help\n  --version      Print version\n  --output jsonl Write validation errors as JSON Lines to stdout\n\n\
-         Exit codes:\n  0  Validation succeeded, or help/version was printed\n  1  Validation failed\n  2  Argument, file reading, JSON parsing, schema compilation, or output error"
+         Exit codes:\n  0  Validation succeeded, or help/version was printed\n  1  Validation failed\n  2  Invalid data JSON\n  3  Invalid schema JSON or schema compilation error\n  4  Argument, file reading, or output error"
     )?;
     stdout.flush()
 }
@@ -76,23 +104,40 @@ fn validate(
     schema_path: &Path,
     data_path: &Path,
     output: OutputFormat,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<ExitCode, RunError> {
     // ファイルの読み込みとJSONパース
-    let schema_bytes = fs::read(schema_path)
-        .map_err(|err| format!("failed to read schema {schema_path:?}: {err}"))?;
-    let schema: Value = serde_json::from_slice(&schema_bytes)
-        .map_err(|err| format!("failed to parse schema {schema_path:?}: {err}"))?;
+    let schema_bytes = fs::read(schema_path).map_err(|err| {
+        RunError::new(
+            ExitCode::Other,
+            format!("failed to read schema {schema_path:?}: {err}"),
+        )
+    })?;
+    let schema: Value = serde_json::from_slice(&schema_bytes).map_err(|err| {
+        RunError::new(
+            ExitCode::InvalidSchema,
+            format!("failed to parse schema {schema_path:?}: {err}"),
+        )
+    })?;
 
-    let data_bytes =
-        fs::read(data_path).map_err(|err| format!("failed to read data {data_path:?}: {err}"))?;
-    let data: Value = serde_json::from_slice(&data_bytes)
-        .map_err(|err| format!("failed to parse data {data_path:?}: {err}"))?;
+    let data_bytes = fs::read(data_path).map_err(|err| {
+        RunError::new(
+            ExitCode::Other,
+            format!("failed to read data {data_path:?}: {err}"),
+        )
+    })?;
+    let data: Value = serde_json::from_slice(&data_bytes).map_err(|err| {
+        RunError::new(
+            ExitCode::InvalidDataJson,
+            format!("failed to parse data {data_path:?}: {err}"),
+        )
+    })?;
 
     // スキーマをコンパイル
-    let validator = jsonschema::validator_for(&schema)?;
+    let validator = jsonschema::validator_for(&schema)
+        .map_err(|err| RunError::new(ExitCode::InvalidSchema, err.to_string()))?;
 
     // 検証してエラーを表示
-    let mut valid = true;
+    let mut code = ExitCode::Ok;
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
 
@@ -108,7 +153,7 @@ fn validate(
             }
             OutputFormat::Text => writeln!(stderr, "{}: {}", error.instance_path(), error)?,
         }
-        valid = false;
+        code = ExitCode::ValidationFailed;
     }
 
     match output {
@@ -116,18 +161,19 @@ fn validate(
         OutputFormat::Text => stderr.flush()?,
     }
 
-    Ok(valid)
+    Ok(code)
 }
 
 fn main() {
-    match run() {
-        Ok(true) => process::exit(0),
-        Ok(false) => process::exit(1),
+    let code = match run() {
+        Ok(code) => code,
         Err(err) => {
             let mut stderr = io::stderr().lock();
-            let _ = writeln!(stderr, "Error: {err}");
-            let _ = stderr.flush();
-            process::exit(2);
+            match writeln!(stderr, "Error: {}", err.message).and_then(|()| stderr.flush()) {
+                Ok(()) => err.code,
+                Err(_) => ExitCode::Other,
+            }
         }
-    }
+    };
+    process::exit(code as i32);
 }

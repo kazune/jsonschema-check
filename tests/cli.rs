@@ -25,6 +25,9 @@ fn help_succeeds_without_files() {
         "--version",
         "--output jsonl",
         "Exit codes:",
+        "  2  Invalid data JSON",
+        "  3  Invalid schema JSON or schema compilation error",
+        "  4  Argument, file reading, or output error",
     ] {
         assert!(help.contains(text), "help is missing {text}");
     }
@@ -78,7 +81,7 @@ fn invalid_arguments_report_usage() {
         vec!["--output=jsonl", "data.json"],
     ] {
         let output = run(&args);
-        assert_eq!(output.status.code(), Some(2), "arguments: {args:?}");
+        assert_eq!(output.status.code(), Some(4), "arguments: {args:?}");
         assert!(output.stdout.is_empty(), "arguments: {args:?}");
         assert_eq!(
             String::from_utf8(output.stderr).unwrap(),
@@ -144,7 +147,7 @@ fn help_and_version_in_file_positions_are_literal_paths() {
 
                 fs::remove_file(&path).unwrap();
                 let output = command.output().unwrap();
-                assert_eq!(output.status.code(), Some(2));
+                assert_eq!(output.status.code(), Some(4));
                 assert_eq!(output.stdout, [] as [u8; 0]);
                 assert!(
                     String::from_utf8(output.stderr)
@@ -247,7 +250,7 @@ fn jsonl_success_is_silent() {
 }
 
 #[test]
-fn jsonl_input_errors_remain_text_on_stderr() {
+fn input_errors_use_their_exit_codes_and_text_diagnostics() {
     let fixture = jsonl_fixture(
         "jsonl-input",
         &serde_json::json!(true),
@@ -255,12 +258,19 @@ fn jsonl_input_errors_remain_text_on_stderr() {
     );
     let schema = fixture.0.join("schema.json");
     let data = fixture.0.join("data.json");
-    for (schema_contents, data_contents, prefix) in [
-        (None, Some("{}"), "Error: failed to read schema "),
-        (Some("true"), None, "Error: failed to read data "),
-        (Some("{"), Some("{}"), "Error: failed to parse schema "),
-        (Some("true"), Some("{"), "Error: failed to parse data "),
-        (Some(r#"{"type":"invalid"}"#), Some("{}"), "Error: "),
+    for (schema_contents, data_contents, code, prefix) in [
+        (None, Some("{}"), 4, "Error: failed to read schema "),
+        (Some("true"), None, 4, "Error: failed to read data "),
+        (Some("{"), Some("{}"), 3, "Error: failed to parse schema "),
+        (Some("true"), Some("{"), 2, "Error: failed to parse data "),
+        (Some(r#"{"type":"invalid"}"#), Some("{}"), 3, "Error: "),
+        (Some("{"), Some("{"), 3, "Error: failed to parse schema "),
+        (
+            Some(r#"{"type":42}"#),
+            Some("{"),
+            2,
+            "Error: failed to parse data ",
+        ),
     ] {
         for (path, contents) in [(&schema, schema_contents), (&data, data_contents)] {
             if let Some(contents) = contents {
@@ -269,20 +279,20 @@ fn jsonl_input_errors_remain_text_on_stderr() {
                 fs::remove_file(path).unwrap();
             }
         }
-        let output = jsonl_command(&fixture).output().unwrap();
-        assert_eq!(output.status.code(), Some(2));
-        assert_eq!(output.stdout, [] as [u8; 0]);
-        assert!(
-            String::from_utf8(output.stderr)
-                .unwrap()
-                .starts_with(prefix)
-        );
+        for jsonl in [false, true] {
+            let output = assert_validation_output(&fixture, jsonl, code);
+            assert!(
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .starts_with(prefix)
+            );
+        }
     }
 }
 
 #[cfg(unix)]
 #[test]
-fn jsonl_output_failure_exits_with_two() {
+fn jsonl_output_failure_exits_with_four() {
     let fixture = jsonl_fixture(
         "jsonl-output",
         &serde_json::json!(false),
@@ -292,7 +302,7 @@ fn jsonl_output_failure_exits_with_two() {
         .stdout(closed_output())
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(4));
     assert!(
         String::from_utf8(output.stderr)
             .unwrap()
@@ -317,7 +327,7 @@ fn shutdown_output(writer: std::os::unix::net::UnixStream) -> std::process::Stdi
 
 #[cfg(unix)]
 #[test]
-fn output_failure_with_retained_peer_exits_with_two() {
+fn output_failure_with_retained_peer_exits_with_four() {
     for option in ["--help", "--version"] {
         let (reader, writer) = std::os::unix::net::UnixStream::pair().unwrap();
         let retained_reader = reader.try_clone().unwrap();
@@ -328,7 +338,7 @@ fn output_failure_with_retained_peer_exits_with_two() {
             .output()
             .unwrap();
         drop(retained_reader);
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(4));
         assert_eq!(output.stdout, [] as [u8; 0]);
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.starts_with("Error: "));
@@ -338,14 +348,14 @@ fn output_failure_with_retained_peer_exits_with_two() {
 
 #[cfg(unix)]
 #[test]
-fn help_and_version_output_failures_exit_with_two() {
+fn help_and_version_output_failures_exit_with_four() {
     for option in ["--help", "--version"] {
         let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
             .arg(option)
             .stdout(closed_output())
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(4));
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.starts_with("Error: "));
         assert!(!stderr.contains("panicked"));
@@ -354,7 +364,7 @@ fn help_and_version_output_failures_exit_with_two() {
 
 #[cfg(unix)]
 #[test]
-fn text_output_failure_exits_with_two() {
+fn text_output_failure_exits_with_four() {
     let fixture = jsonl_fixture(
         "text-output",
         &serde_json::json!(false),
@@ -366,13 +376,13 @@ fn text_output_failure_exits_with_two() {
         .stderr(closed_output())
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(4));
     assert_eq!(output.stdout, [] as [u8; 0]);
 }
 
 #[cfg(unix)]
 #[test]
-fn diagnostic_output_failure_exits_with_two() {
+fn diagnostic_output_failure_exits_with_four() {
     for args in [vec![], vec!["--help"], vec!["--version"]] {
         let output = Command::new(env!("CARGO_BIN_EXE_jsonschema-check"))
             .args(args)
@@ -380,8 +390,20 @@ fn diagnostic_output_failure_exits_with_two() {
             .stderr(closed_output())
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(4));
     }
+
+    let fixture = jsonl_fixture(
+        "closed-parse-diagnostic",
+        &serde_json::json!(true),
+        &serde_json::json!(null),
+    );
+    fs::write(fixture.0.join("data.json"), "{").unwrap();
+    let output = jsonl_command(&fixture)
+        .stderr(closed_output())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(4));
 }
 
 #[cfg(unix)]
@@ -408,7 +430,7 @@ fn non_utf8_arguments_report_normal_errors() {
                 [OsStr::new("schema.json"), filename]
             });
             let output = command.output().unwrap();
-            assert_eq!(output.status.code(), Some(2));
+            assert_eq!(output.status.code(), Some(4));
             assert_eq!(output.stdout, [] as [u8; 0]);
             let stderr = String::from_utf8(output.stderr).unwrap();
             assert!(stderr.starts_with(&format!("Error: failed to read {role} {filename:?}: ")));
@@ -425,7 +447,7 @@ fn non_utf8_arguments_report_normal_errors() {
             .args(args)
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(4));
         assert_eq!(output.stdout, [] as [u8; 0]);
         assert_eq!(
             String::from_utf8(output.stderr).unwrap(),
@@ -537,7 +559,13 @@ fn file_errors_identify_operation_role_and_escaped_path() {
                     .args(args)
                     .output()
                     .unwrap();
-                assert_eq!(output.status.code(), Some(2));
+                let code = match (operation, role) {
+                    ("read", _) => 4,
+                    ("parse", "schema") => 3,
+                    ("parse", "data") => 2,
+                    _ => unreachable!(),
+                };
+                assert_eq!(output.status.code(), Some(code));
                 assert_eq!(output.stdout, [] as [u8; 0]);
                 assert_eq!(
                     String::from_utf8(output.stderr).unwrap(),
@@ -683,7 +711,7 @@ fn assert_validation_output(fixture: &Fixture, jsonl: bool, expected_code: i32) 
                     .starts_with("Error: ")
             );
         }
-        2 => {
+        2..=4 => {
             assert_eq!(output.stdout, [] as [u8; 0]);
             assert!(
                 std::str::from_utf8(&output.stderr)
@@ -775,7 +803,7 @@ fn tuple_schema_syntax_depends_on_the_selected_draft() {
         }
         fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
         let code = if uri.is_none() || uri == Some(DRAFT_URIS[4]) {
-            2
+            3
         } else {
             0
         };
@@ -862,7 +890,7 @@ fn format_assertion_vocabulary_validates_email_and_rejects_unknown_formats() {
     fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
     fs::write(fixture.0.join("data.json"), r#""anything""#).unwrap();
     for jsonl in [false, true] {
-        let output = assert_validation_output(&fixture, jsonl, 2);
+        let output = assert_validation_output(&fixture, jsonl, 3);
         assert!(
             String::from_utf8(output.stderr)
                 .unwrap()
@@ -990,7 +1018,7 @@ fn internal_references_validate_and_missing_targets_report_errors() {
         schema["$ref"] = serde_json::json!("#/definitions/missing");
         fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
         for jsonl in [false, true] {
-            assert_validation_output(&fixture, jsonl, 2);
+            assert_validation_output(&fixture, jsonl, 3);
         }
     }
 }
@@ -1022,7 +1050,7 @@ fn external_references_are_not_retrieved() {
         let schema = serde_json::json!({"$ref": reference});
         fs::write(fixture.0.join("schema.json"), schema.to_string()).unwrap();
         for jsonl in [false, true] {
-            let output = assert_validation_output(&fixture, jsonl, 2);
+            let output = assert_validation_output(&fixture, jsonl, 3);
             assert!(
                 String::from_utf8(output.stderr)
                     .unwrap()
@@ -1253,8 +1281,8 @@ fn arbitrary_precision_still_rejects_invalid_json_numbers_and_schemas() {
             (r#"{"type":"number"}"#, "1e", 2),
             (r#"{"type":"number"}"#, "NaN", 2),
             (r#"{"type":"number"}"#, "Infinity", 2),
-            (r#"{"const":01}"#, "0", 2),
-            (r#"{"multipleOf":0}"#, "0", 2),
+            (r#"{"const":01}"#, "0", 3),
+            (r#"{"multipleOf":0}"#, "0", 3),
         ],
     );
 }

@@ -63,7 +63,7 @@ For example, this schema explicitly selects Draft 2020-12:
 `$ref` can refer to subschemas within the same schema document, such as `#/definitions/item` or `#/$defs/item`.
 External schema files are not loaded, and HTTP or HTTPS references are not fetched.
 Relative references are not resolved against the schema file's directory.
-If compiling a schema requires an unavailable external resource or an unresolved internal reference, the program reports an error on standard error and exits with code `2` in both output modes.
+If compiling a schema requires an unavailable external resource or an unresolved internal reference, the program reports an error on standard error and exits with code `3` in both output modes.
 The standard meta-schemas for the supported drafts are bundled, so their `$schema` URIs do not require network access.
 
 ## Usage
@@ -85,7 +85,7 @@ jsonschema-check --version
 ```
 
 In file argument positions, `--help` and `--version` are treated as literal file paths in both text and JSON Lines modes.
-If such a file does not exist, the program reports a file reading error with exit code `2`.
+If such a file does not exist, the program reports a file reading error with exit code `4`.
 
 For example, save the following schema as `schema.json`:
 
@@ -154,7 +154,7 @@ Quotes, newlines, and other special characters in attribute values are escaped a
 For a missing required property, `instancePath` identifies the object that should contain the property.
 All reported validation errors are emitted without headings, counts, or summary records.
 Successful validation produces no output and exits with code `0`; validation errors produce exit code `1` and no standard error output.
-Argument, file reading, JSON parsing, schema compilation, and output errors are reported as text on standard error with exit code `2`.
+Argument, file reading, JSON parsing, schema compilation, and output errors are reported as text on standard error.
 Check the exit code as well as the output, since output errors can leave incomplete JSON Lines.
 Only the form `--output jsonl` before both file paths is supported; missing or unsupported values, repeated options, and other placements are argument errors.
 `--output=jsonl` is not supported.
@@ -165,12 +165,16 @@ Only the form `--output jsonl` before both file paths is supported; missing or u
 | --- | --- |
 | `0` | The data satisfies the schema, or help or version information was displayed. |
 | `1` | The data does not satisfy the schema. |
-| `2` | An argument, file reading, JSON parsing, schema compilation, or output error occurred. |
+| `2` | The data file could not be parsed as JSON. |
+| `3` | The schema file could not be parsed as JSON or the schema could not be compiled. |
+| `4` | An argument, file reading, or output error occurred. |
 
-Errors with exit code `2` are written to standard error with an `Error:` prefix.
-Failures writing help, version information, or validation results produce exit code `2`.
-If writing the error diagnostic to standard error also fails, the program exits with code `2` without further output attempts.
-Missing or extra arguments produce the usage message with exit code `2`.
+The program checks arguments, reads and parses the schema, reads and parses the data, then compiles the schema before validating.
+The first error stops processing.
+Errors with exit codes `2` through `4` are written to standard error with an `Error:` prefix.
+Failures writing help, version information, or validation results produce exit code `4`.
+If writing the error diagnostic to standard error also fails, the program exits with code `4` without further output attempts.
+Missing or extra arguments produce the usage message with exit code `4`.
 File reading and JSON parsing errors identify the operation, the file's role (`schema` or `data`), and the supplied file path, followed by the underlying error details.
 Paths are enclosed in double quotes, with special characters such as quotes and newlines escaped.
 Non-UTF-8 portions of paths are escaped in diagnostics.
@@ -190,7 +194,7 @@ There is no CLI option to override format validation.
 Draft 2020-12 also supports the [Format-Assertion vocabulary](https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-validation-01#section-7.2.2), which requires format validation when selected through a meta-schema declaring that vocabulary.
 A custom meta-schema can be embedded in the same document under `$defs`, identified by `$id`, and selected through `$schema` without external retrieval.
 Adding `$vocabulary` to a schema that still selects the standard Draft 2020-12 meta-schema does not enable format assertions.
-With Format-Assertion active, unknown format names cause a schema compilation error with exit code `2`.
+With Format-Assertion active, unknown format names cause a schema compilation error with exit code `3`.
 
 The `idna` feature enables the internationalized `idn-email` and `idn-hostname` formats.
 `idn-hostname` is recognized for Draft 7 and later; Draft 4 and Draft 6 treat it as an unknown format.

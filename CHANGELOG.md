@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Reserve exit code `2` for invalid data JSON, use `3` for schema JSON parsing and compilation errors, and use `4` for argument, file reading, and output errors.
+- Update callers that previously treated exit code `2` as a catch-all to handle codes `2` through `4`.
+
 ## 0.2.2 - 2026-11-18
 
 - Distribute the Linux x86_64 musl build as a versioned `.tar.gz` archive containing the `jsonschema-check` executable, README, license, and changelog.
