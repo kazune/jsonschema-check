@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-11-18
+
+- Distribute the Linux x86_64 musl build as a versioned `.tar.gz` archive containing the `jsonschema-check` executable, README, license, and changelog.
+
 ## 0.2.1 - 2026-11-18
 
 - Build a Linux x86_64 musl binary on tag pushes and attach it to the corresponding GitHub Release after CI checks pass.
