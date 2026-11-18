@@ -27,3 +27,40 @@ jobs:
           components: rustfmt, clippy
       - name: Run checks
         run: make ci
+
+  release:
+    name: Release Linux x86_64 musl binary
+    needs: check
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !github.event.deleted
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - name: Install musl tools
+        run: sudo apt-get install -y musl-tools
+      - name: Build and verify musl binary
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: |
+          cargo build --release --locked --target x86_64-unknown-linux-musl
+          target/x86_64-unknown-linux-musl/release/jsonschema-check --version
+          cp target/x86_64-unknown-linux-musl/release/jsonschema-check jsonschema-check-x86_64-unknown-linux-musl
+      - name: Attach binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          asset=jsonschema-check-x86_64-unknown-linux-musl
+          if gh release view -- "$RELEASE_TAG" > /dev/null; then
+            gh release upload -- "$RELEASE_TAG" "$asset"
+          else
+            gh release create --verify-tag -- "$RELEASE_TAG" "$asset"
+          fi
