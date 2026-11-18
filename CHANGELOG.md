@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-11-18
 
 - Reserve exit code `2` for invalid data JSON, use `3` for schema JSON parsing and compilation errors, and use `4` for argument, file reading, and output errors.
 - Update callers that previously treated exit code `2` as a catch-all to handle codes `2` through `4`.
