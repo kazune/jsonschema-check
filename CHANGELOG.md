@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-11-18
+
+- Build a Linux x86_64 musl binary on tag pushes and attach it to the corresponding GitHub Release after CI checks pass.
+- Pin the Rust toolchain to 1.100.0 and the GitHub Actions checkout action to the v7.0.1 commit.
+
 ## 0.2.0 - 2026-11-13
 
 - Enable IDNA support for the `idn-email` and `idn-hostname` formats, including validation under Draft 2020-12 Format-Assertion.
