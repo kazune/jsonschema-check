@@ -50,15 +50,34 @@ jobs:
         run: |
           cargo build --release --locked --target x86_64-unknown-linux-musl
           target/x86_64-unknown-linux-musl/release/jsonschema-check --version
-          cp target/x86_64-unknown-linux-musl/release/jsonschema-check jsonschema-check-x86_64-unknown-linux-musl
-      - name: Attach binary to GitHub Release
+      - name: Package and verify release archive
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          name="jsonschema-check-${RELEASE_TAG//\//_}-x86_64-unknown-linux-musl"
+          asset="$name.tar.gz"
+          staging=$(mktemp -d)
+          trap 'rm -rf -- "$staging"' EXIT
+          mkdir -p "$staging/$name" "$staging/extracted"
+          install -m 755 target/x86_64-unknown-linux-musl/release/jsonschema-check "$staging/$name/"
+          cp README.md LICENSE CHANGELOG.md "$staging/$name/"
+          tar -czf "$asset" -C "$staging" "$name"
+          tar -xzf "$asset" -C "$staging/extracted"
+          package="$staging/extracted/$name"
+          test -x "$package/jsonschema-check"
+          for file in README.md LICENSE CHANGELOG.md; do
+            cmp "$file" "$package/$file"
+          done
+          printf 'asset=%s\n' "$asset" >> "$GITHUB_OUTPUT"
+      - name: Attach archive to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_ASSET: ${{ steps.package.outputs.asset }}
         run: |
-          asset=jsonschema-check-x86_64-unknown-linux-musl
           if gh release view -- "$RELEASE_TAG" > /dev/null; then
-            gh release upload -- "$RELEASE_TAG" "$asset"
+            gh release upload -- "$RELEASE_TAG" "$RELEASE_ASSET"
           else
-            gh release create --verify-tag -- "$RELEASE_TAG" "$asset"
+            gh release create --verify-tag -- "$RELEASE_TAG" "$RELEASE_ASSET"
           fi
